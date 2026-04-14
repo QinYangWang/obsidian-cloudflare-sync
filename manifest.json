@@ -1,0 +1,11 @@
+{
+	"id": "cloudflare-sync",
+	"name": "Cloudflare Sync",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Sync your Obsidian vault to Cloudflare R2 for blog publishing",
+	"author": "QinYangWang",
+	"authorUrl": "https://github.com/QinYangWang",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}
