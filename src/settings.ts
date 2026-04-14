@@ -9,10 +9,14 @@ export interface CloudflareSyncSettings {
   autoFrontmatter: boolean;
   syncAllFiles: boolean;
   excludeFolders: string[];
-  autoSyncInterval: number;       // 自动同步间隔（分钟）
-  conflictStrategy: ConflictStrategy; // 冲突解决策略
-  syncOnStartup: boolean;         // 启动时同步
-  debounceDelay: number;          // 文件修改后延迟同步（秒）
+  autoSyncInterval: number;
+  conflictStrategy: ConflictStrategy;
+  syncOnStartup: boolean;
+  debounceDelay: number;
+  publishBehavior: 'frontmatter-only' | 'all-notes';
+  publishServerUrl: string;
+  publishApiToken: string;
+  attachmentsPathPrefix: string;
 }
 
 export class CloudflareSyncSettingTab extends PluginSettingTab {
@@ -171,6 +175,36 @@ export class CloudflareSyncSettingTab extends PluginSettingTab {
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean);
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // ===== Publish Settings =====
+    containerEl.createEl('h3', { text: 'Publish Settings' });
+
+    new Setting(containerEl)
+      .setName('Publish Behavior')
+      .setDesc('Which notes should be published?')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('frontmatter-only', 'Only notes with publish: true in frontmatter')
+          .addOption('all-notes', 'All notes (except those with publish: false)')
+          .setValue(this.plugin.settings.publishBehavior || 'frontmatter-only')
+          .onChange(async (value: string) => {
+            this.plugin.settings.publishBehavior = value as 'frontmatter-only' | 'all-notes';
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Attachments Path Prefix')
+      .setDesc('Remote path prefix for uploaded attachments (e.g., attachments or images)')
+      .addText((text) =>
+        text
+          .setPlaceholder('attachments')
+          .setValue(this.plugin.settings.attachmentsPathPrefix || 'attachments')
+          .onChange(async (value) => {
+            this.plugin.settings.attachmentsPathPrefix = value || 'attachments';
             await this.plugin.saveSettings();
           })
       );

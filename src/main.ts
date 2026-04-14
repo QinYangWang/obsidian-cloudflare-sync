@@ -4,6 +4,7 @@ import { CloudflareSyncSettingTab, CloudflareSyncSettings } from './settings';
 import { SyncEngine, ConflictInfo, ConflictResolution } from './sync-engine';
 import { SyncStatusBar } from './status-bar';
 import { ConflictModal } from './conflict-modal';
+import { PublishEngine } from './publish-engine';
 
 interface FrontmatterData {
   title?: string;
@@ -30,6 +31,7 @@ export default class CloudflareSyncPlugin extends Plugin {
   settings: CloudflareSyncSettings;
   syncEngine: SyncEngine;
   statusBar: SyncStatusBar;
+  publishEngine: PublishEngine;
 
   async onload() {
     await this.loadSettings();
@@ -37,6 +39,11 @@ export default class CloudflareSyncPlugin extends Plugin {
     // 初始化同步引擎
     this.syncEngine = new SyncEngine(this);
     await this.syncEngine.loadSyncState();
+
+    // 初始化发布引擎
+    this.publishEngine = new PublishEngine(this);
+    await this.publishEngine.loadState();
+    await this.publishEngine.refreshAllStatuses();
 
     // 初始化状态栏
     this.statusBar = new SyncStatusBar(this, {
@@ -113,6 +120,24 @@ export default class CloudflareSyncPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'publish-current-note',
+      name: 'Publish: Publish current note',
+      editorCallback: () => this.publishCurrentNote(),
+    });
+
+    this.addCommand({
+      id: 'unpublish-current-note',
+      name: 'Publish: Unpublish current note',
+      editorCallback: () => this.unpublishCurrentNote(),
+    });
+
+    this.addCommand({
+      id: 'publish-all-changes',
+      name: 'Publish: Publish all changes',
+      callback: () => this.publishAllChanges(),
+    });
+
+    this.addCommand({
       id: 'show-sync-status',
       name: 'Show sync status',
       callback: () => {
@@ -137,6 +162,27 @@ export default class CloudflareSyncPlugin extends Plugin {
           if (file.path.endsWith('.md')) {
             this.updateFileFrontmatter(file);
           }
+        }
+      })
+    );
+
+    // 文件右键菜博发布选项
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (!(file instanceof TFile)) return;
+        const state = this.publishEngine.getPublishState(file.path);
+        if (!state || state.status === 'draft') {
+          menu.addItem((item) => {
+            item.setTitle('Publish Note').setIcon('upload-cloud').onClick(() => {
+              this.publishEngine.publishFile(file);
+            });
+          });
+        } else {
+          menu.addItem((item) => {
+            item.setTitle('Unpublish Note').setIcon('x-circle').onClick(() => {
+              this.publishEngine.unpublishFile(file);
+            });
+          });
         }
       })
     );
@@ -184,6 +230,10 @@ export default class CloudflareSyncPlugin extends Plugin {
         conflictStrategy: 'ask' as const,
         syncOnStartup: true,
         debounceDelay: 30,
+        publishBehavior: 'frontmatter-only',
+        publishServerUrl: '',
+        publishApiToken: '',
+        attachmentsPathPrefix: 'attachments',
       },
       await this.loadData()
     );
@@ -723,6 +773,46 @@ export default class CloudflareSyncPlugin extends Plugin {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
+  }
+
+  // ========== Publish Methods ==========
+
+  async publishCurrentNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile || !activeFile.path.endsWith('.md')) {
+      new Notice('Please open a markdown note to publish');
+      return;
+    }
+    const success = await this.publishEngine.publishFile(activeFile);
+    if (success) {
+      new Notice(`Published ${activeFile.name}`);
+    } else {
+      new Notice(`Failed to publish ${activeFile.name}`);
+    }
+  }
+
+  async unpublishCurrentNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile || !activeFile.path.endsWith('.md')) {
+      new Notice('Please open a markdown note to unpublish');
+      return;
+    }
+    const success = await this.publishEngine.unpublishFile(activeFile);
+    if (success) {
+      new Notice(`Unpublished ${activeFile.name}`);
+    } else {
+      new Notice(`Failed to unpublish ${activeFile.name}`);
+    }
+  }
+
+  async publishAllChanges(): Promise<void> {
+    if (!this.settings.serverUrl || !this.settings.apiToken) {
+      new Notice('Please configure Server URL and API Token in settings');
+      return;
+    }
+    new Notice('Publishing all changes...');
+    await this.publishEngine.publishAllChanges();
+    new Notice('Publish complete');
   }
 
   onunload() {
