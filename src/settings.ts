@@ -9,6 +9,7 @@ export interface CloudflareSyncSettings {
   autoFrontmatter: boolean;
   syncAllFiles: boolean;
   excludeFolders: string[];
+  excludePatterns: string[];
   autoSyncInterval: number;
   conflictStrategy: ConflictStrategy;
   syncOnStartup: boolean;
@@ -172,6 +173,22 @@ export class CloudflareSyncSettingTab extends PluginSettingTab {
           .setValue((this.plugin.settings.excludeFolders || []).join(', '))
           .onChange(async (value) => {
             this.plugin.settings.excludeFolders = value
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Exclude Patterns')
+      .setDesc('Comma-separated glob patterns to exclude (e.g., *.tmp, _drafts/**, *.excalidraw)')
+      .addText((text) =>
+        text
+          .setPlaceholder('*.tmp, _drafts/**, *.excalidraw')
+          .setValue((this.plugin.settings.excludePatterns || []).join(', '))
+          .onChange(async (value) => {
+            this.plugin.settings.excludePatterns = value
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean);

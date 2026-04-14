@@ -226,6 +226,7 @@ export default class CloudflareSyncPlugin extends Plugin {
         syncAllFiles: true,
         excludeFolders: ['_templates', '.trash'],
         excludeFiles: [],
+        excludePatterns: [],
         autoSyncInterval: 5,
         conflictStrategy: 'ask' as const,
         syncOnStartup: true,
@@ -515,6 +516,13 @@ export default class CloudflareSyncPlugin extends Plugin {
     // 排除特定文件夹
     for (const exclude of this.settings.excludeFolders || []) {
       if (filePath.startsWith(exclude + '/') || filePath.startsWith(exclude)) {
+        return false;
+      }
+    }
+
+    // 排除 glob 模式
+    for (const pattern of this.settings.excludePatterns || []) {
+      if (matchesGlob(filePath, pattern)) {
         return false;
       }
     }
@@ -821,4 +829,47 @@ export default class CloudflareSyncPlugin extends Plugin {
     this.statusBar?.destroy();
     console.log('Cloudflare Sync plugin unloaded');
   }
+}
+
+function matchesGlob(filePath: string, pattern: string): boolean {
+  // Convert glob pattern to regex
+  // Supports: * (any chars except /), ** (any chars including /), ? (single char)
+  const parts = pattern.split('/');
+  const pathParts = filePath.split('/');
+
+  // Simple case: pattern has no /, match against filename only
+  if (parts.length === 1 && !pattern.includes('/')) {
+    const fileName = pathParts[pathParts.length - 1];
+    return globToRegex(pattern).test(fileName);
+  }
+
+  // Full path matching
+  return globToRegex(pattern).test(filePath);
+}
+
+function globToRegex(pattern: string): RegExp {
+  let regex = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        regex += '.*';
+        i += 2;
+      } else {
+        regex += '[^/]*';
+        i++;
+      }
+    } else if (c === '?') {
+      regex += '[^/]';
+      i++;
+    } else if (c === '.') {
+      regex += '\\.';
+      i++;
+    } else {
+      regex += c;
+      i++;
+    }
+  }
+  return new RegExp(`^${regex}$`);
 }
