@@ -737,10 +737,11 @@ export default class CloudflareSyncPlugin extends Plugin {
   // ========== 图片处理 ==========
 
   async extractAndUploadImages(content: string, file: TFile): Promise<void> {
-    const imageRegex = /!\[.*?\]\((.*?)\)/g;
+    // Markdown image links: ![alt](path)
+    const mdImageRegex = /!\[.*?\]\((.*?)\)/g;
     let match;
 
-    while ((match = imageRegex.exec(content)) !== null) {
+    while ((match = mdImageRegex.exec(content)) !== null) {
       const imagePath = match[1];
 
       if (imagePath.startsWith('./') || !imagePath.startsWith('http')) {
@@ -770,6 +771,41 @@ export default class CloudflareSyncPlugin extends Plugin {
             }),
           });
         }
+      }
+    }
+
+    // Wikilink images: ![[filename.png]]
+    const wikiImageRegex = /!\[\[([^\]]+)\]\]/g;
+    while ((match = wikiImageRegex.exec(content)) !== null) {
+      const rawPath = match[1];
+      const folder = file.parent?.path || '';
+      // Try direct path first, then relative to file
+      let imageFile = this.app.vault.getAbstractFileByPath(normalizePath(rawPath));
+      if (!imageFile) {
+        imageFile = this.app.vault.getAbstractFileByPath(normalizePath(`${folder}/${rawPath}`));
+      }
+
+      if (imageFile instanceof TFile) {
+        const imageBuffer = await this.app.vault.readBinary(imageFile);
+        const base64 = this.arrayBufferToBase64(imageBuffer);
+        const ext = imageFile.extension.toLowerCase();
+
+        let contentType = 'application/octet-stream';
+        if (['jpg', 'jpeg'].includes(ext)) contentType = `image/jpeg`;
+        else if (ext === 'png') contentType = 'image/png';
+        else if (ext === 'gif') contentType = 'image/gif';
+        else if (ext === 'webp') contentType = 'image/webp';
+        else if (ext === 'svg') contentType = 'image/svg+xml';
+
+        await this.api('/api/sync/upload', {
+          method: 'POST',
+          body: JSON.stringify({
+            key: `images/${imageFile.name}`,
+            content: base64,
+            contentType,
+            encoding: 'base64',
+          }),
+        });
       }
     }
   }
